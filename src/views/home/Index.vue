@@ -1,8 +1,8 @@
 <template>
   <div class="container">
-    <van-tabs swipeable v-model="activeIndex">
+    <van-tabs @change="changeChannel" :lazy-render="false" swipeable v-model="activeIndex">
       <van-tab :key="channel.id" v-for="channel in myChannels" :title="channel.name">
-        <div class="scroll-wrapper">
+        <div ref="scroll-wrapper" class="scroll-wrapper" @scroll="remember($event)">
           <van-pull-refresh
             v-model="channel.downLoading"
             @refresh="onRefresh"
@@ -18,17 +18,17 @@
                 <div class="article_item">
                   <h3 class="van-ellipsis">{{item.title}}</h3>
                   <div class="img_box" v-if="item.cover.type===3">
-                    <van-image class="w33" fit="cover" :src="item.cover.images[0]" />
-                    <van-image class="w33" fit="cover" :src="item.cover.images[1]" />
-                    <van-image class="w33" fit="cover" :src="item.cover.images[2]" />
+                    <van-image lazy-load class="w33" fit="cover" :src="item.cover.images[0]" />
+                    <van-image lazy-load class="w33" fit="cover" :src="item.cover.images[1]" />
+                    <van-image lazy-load class="w33" fit="cover" :src="item.cover.images[2]" />
                   </div>
                   <div class="img_box" v-if="item.cover.type===1">
-                    <van-image class="w100" fit="cover" :src="item.cover.images[0]" />
+                    <van-image lazy-load class="w100" fit="cover" :src="item.cover.images[0]" />
                   </div>
                   <div class="info_box">
                     <span>{{item.aut_name}}</span>
                     <span>{{item.comm_count}}评论</span>
-                    <span>{{item.pubdate}}</span>
+                    <span>{{item.pubdate|relTime}}</span>
                     <span class="close">
                       <van-icon name="cross"></van-icon>
                     </span>
@@ -49,6 +49,7 @@
 <script>
 import { getMyChannels } from '@/api/channel'
 import { getArticles } from '@/api/article'
+import { mapState } from 'vuex'
 export default {
   name: 'home-index',
   data () {
@@ -65,24 +66,57 @@ export default {
   computed: {
     activeChannel () {
       return this.myChannels[this.activeIndex]
+    },
+    ...mapState(['user'])
+  },
+  watch: {
+    'user.refresh_token': function () {
+      this.activeIndex = 0
+      this.getMyChannels()
+      this.onLoad()
     }
   },
   created () {
     this.getMyChannels()
   },
+  activated () {
+    if (this.$refs['scroll-wrapper']) {
+      const dom = this.$refs['scroll-wrapper'][this.activeIndex]
+      dom.scrollTop = this.activeChannel.scrollTop
+    }
+  },
   methods: {
+    remember (e) {
+      this.activeChannel.scrollTop = e.target.scrollTop
+    },
+    changeChannel () {
+      if (!this.activeChannel.articles.length) {
+        this.activeChannel.upLoading = true
+        this.activeChannel.finished = false
+        this.onLoad()
+      } else {
+        this.$nextTick(() => {
+          const dom = this.$refs['scroll-wrapper'][this.activeIndex]
+          dom.scrollTop = this.activeChannel.scrollTop
+        })
+      }
+    },
     async getMyChannels () {
       const data = await getMyChannels()
-      this.myChannels = data.channels.map(item => {
-        return {
-          id: item.id,
-          name: item.name,
-          articles: [],
-          upLoading: false,
-          downLoading: false,
-          finished: false,
-          timestamp: Date.now()
-        }
+      this.myChannels = []
+      this.$nextTick(() => {
+        this.myChannels = data.channels.map(item => {
+          return {
+            id: item.id,
+            name: item.name,
+            articles: [],
+            upLoading: false,
+            downLoading: false,
+            finished: false,
+            timestamp: Date.now(),
+            scrollTop: 0
+          }
+        })
       })
     },
     async onLoad () {
